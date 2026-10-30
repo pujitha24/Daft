@@ -166,9 +166,14 @@ pub fn rewrite_predicate_for_partitioning(
         }
     };
 
-    let with_part_cols = predicate.transform(&|expr: ExprRef| {
+    let with_part_cols = predicate.transform_down(&|expr: ExprRef| {
         use Operator::{Eq, Gt, GtEq, Lt, LtEq, NotEq};
         match expr.as_ref() {
+            // Rewritten comparisons on lossy transforms are only supersets of the matching
+            // partitions, and negating a superset yields a subset that can prune matching
+            // partitions. Leave everything under NOT untouched; the un-rewritten clause still
+            // references the source column, so it is not used for partition pruning.
+            Expr::Not(_) => Ok(Transformed::new(expr, false, TreeNodeRecursion::Jump)),
             // Binary Op for Eq
             // All transforms should work as is
             Expr::BinaryOp {
@@ -336,4 +341,35 @@ pub fn rewrite_predicate_for_partitioning(
         data_preds,
         needs_filter_op_preds,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use daft_core::prelude::{DataType, Field};
+    use daft_dsl::{lit, resolved_col};
+
+    use super::*;
+
+    fn month_pfield() -> PartitionField {
+        PartitionField::new(
+            Field::new("d_month", DataType::Int32),
+            Some(Field::new("d", DataType::Date)),
+            Some(PartitionTransform::Month),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn comparison_on_lossy_transform_is_rewritten() {
+        let pred = resolved_col("d").lt(lit(100));
+        let groups = rewrite_predicate_for_partitioning(&pred, &[month_pfield()]).unwrap();
+        assert_eq!(groups.partition_only_filter.len(), 1);
+    }
+
+    #[test]
+    fn comparison_under_not_on_lossy_transform_is_not_rewritten() {
+        let pred = resolved_col("d").lt(lit(100)).not();
+        let groups = rewrite_predicate_for_partitioning(&pred, &[month_pfield()]).unwrap();
+        assert!(groups.partition_only_filter.is_empty());
+    }
 }
