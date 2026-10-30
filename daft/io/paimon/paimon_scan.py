@@ -85,7 +85,7 @@ class PaimonDataSource(DataSource):
         warehouse = catalog_options.get("warehouse", "")
         self._warehouse_scheme = urlparse(warehouse).scheme
 
-        self._file_format = table.options.get("file.format", PAIMON_FILE_FORMAT_PARQUET).lower()
+        self._file_format = table.table_schema.options.get("file.format", PAIMON_FILE_FORMAT_PARQUET).lower()
         self._use_native_parquet = self._file_format == PAIMON_FILE_FORMAT_PARQUET
 
         self._partition_field_arrow_types: dict[str, pa.DataType] = (

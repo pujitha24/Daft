@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from daft.io.paimon._paimon import _convert_paimon_catalog_options_to_io_config
+from daft.io.paimon._paimon import _convert_paimon_catalog_options_to_io_config, _file_io_properties_to_dict
 
 
 def test_convert_paimon_s3_catalog_options_to_io_config():
@@ -50,3 +50,22 @@ def test_convert_paimon_oss_catalog_options_to_opendal_io_config():
 
 def test_convert_paimon_catalog_options_without_storage_options_returns_none():
     assert _convert_paimon_catalog_options_to_io_config({"warehouse": "s3://my-bucket/warehouse"}) is None
+
+
+def test_file_io_properties_to_dict_handles_dict_and_options():
+    class FakeOptions:
+        """Mimics pypaimon >= 1.4.1 `Options`, whose `get` requires a `ConfigOption`."""
+
+        def __init__(self, data):
+            self.data = data
+
+        def get(self, key, default=None):
+            return key.key()
+
+        def to_map(self):
+            return self.data
+
+    props = {"warehouse": "s3://my-bucket/warehouse"}
+    assert _file_io_properties_to_dict(None) == {}
+    assert _file_io_properties_to_dict(props) == props
+    assert _file_io_properties_to_dict(FakeOptions(props)) == props

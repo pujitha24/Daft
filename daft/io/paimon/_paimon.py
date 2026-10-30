@@ -1,7 +1,7 @@
 # ruff: noqa: I002
 # isort: dont-add-import: from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from daft import context, runners
 from daft.api_annotations import PublicAPI
@@ -11,6 +11,17 @@ from daft.io import IOConfig, S3Config
 
 if TYPE_CHECKING:
     from pypaimon.table.table import Table as PaimonTable
+
+
+def _file_io_properties_to_dict(properties: Any) -> dict[str, str]:
+    """Normalize `FileIO.properties` to a plain dict.
+
+    pypaimon < 1.4.1 exposes a dict; later versions expose an `Options` object whose `get` takes a `ConfigOption`.
+    """
+    if properties is None:
+        return {}
+    to_map = getattr(properties, "to_map", None)
+    return dict(to_map() if callable(to_map) else properties)
 
 
 def _convert_paimon_catalog_options_to_io_config(catalog_options: dict[str, str]) -> IOConfig | None:
@@ -138,7 +149,7 @@ def read_paimon(
     from daft.io.paimon.paimon_scan import PaimonDataSource
 
     file_io = getattr(table, "file_io", None)
-    catalog_options = (getattr(file_io, "properties", None) or {}) if file_io is not None else {}
+    catalog_options = _file_io_properties_to_dict(getattr(file_io, "properties", None))
 
     # Infer IO config: user-provided > catalog options > default
     io_config = io_config or _convert_paimon_catalog_options_to_io_config(catalog_options)
